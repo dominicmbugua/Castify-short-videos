@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Submit a video</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+<style>
+  :root {
+    --bg: #14181D;
+    --panel: #1B2027;
+    --panel-raised: #212832;
+    --line: #2C333D;
+    --text-primary: #E7EAEE;
+    --text-muted: #8B95A5;
+    --text-faint: #5B6472;
+    --accent: #4FB0A5;
+    --accent-dim: #2E4744;
+    --danger: #D97066;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 48px 20px;
+  }
+
+  .wrap { width: 100%; max-width: 560px; }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 6px 0;
+  }
+
+  .subtitle {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin: 0 0 32px 0;
+  }
+
+  section { margin-bottom: 28px; }
+
+  .divider {
+    height: 1px;
+    background: var(--line);
+    margin-bottom: 28px;
+    border: none;
+  }
+
+  label.field-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .field-hint {
+    display: block;
+    font-size: 12.5px;
+    color: var(--text-faint);
+    line-height: 1.4;
+    font-weight: 400;
+    margin-top: 2px;
+  }
+
+  input[type="text"], input[type="url"], input[type="number"] {
+    width: 100%;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--text-primary);
+    font-family: inherit;
+    outline: none;
+    transition: border-color 120ms ease;
+  }
+
+  input[type="number"] { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+
+  input:focus { border-color: var(--accent); }
+  input.error { border-color: var(--danger); }
+
+  .error-text {
+    font-size: 12.5px;
+    color: var(--danger);
+    margin-top: 6px;
+    min-height: 0;
+  }
+
+  /* source toggle */
+  .source-toggle {
+    display: inline-flex;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 3px;
+    gap: 2px;
+    margin-bottom: 14px;
+  }
+
+  .source-toggle button {
+    border: none;
+    cursor: pointer;
+    padding: 7px 16px;
+    font-size: 13.5px;
+    font-weight: 500;
+    border-radius: 5px;
+    font-family: inherit;
+    background: transparent;
+    color: var(--text-muted);
+    transition: background 120ms ease, color 120ms ease;
+  }
+
+  .source-toggle button.active {
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+
+  .source-panel { display: none; }
+  .source-panel.active { display: block; }
+
+  /* range rows */
+  .range-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .range-row .to {
+    color: var(--text-faint);
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  .num-wrap { position: relative; flex: 1; }
+
+  .num-suffix {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12.5px;
+    color: var(--text-faint);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    pointer-events: none;
+  }
+
+  .num-wrap.has-suffix input { padding-right: 40px; }
+
+  /* file picker */
+  .file-picker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    background: var(--panel-raised);
+    border: 1px dashed var(--line);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 13.5px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .file-picker.error { border-color: var(--danger); }
+
+  .file-picker .badge {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-dim);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    flex-shrink: 0;
+  }
+
+  .file-picker .filename {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-picker input[type="file"] { display: none; }
+
+  /* format options */
+  .format-options { display: flex; gap: 10px; }
+
+  .format-option {
+    flex: 1;
+    text-align: left;
+    cursor: pointer;
+    padding: 12px 14px;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: var(--panel-raised);
+    font-family: inherit;
+    color: inherit;
+  }
+
+  .format-option.selected {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .format-option .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .format-option .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid var(--text-faint);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .format-option.selected .dot { border-color: var(--accent); }
+
+  .format-option .dot-inner {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: none;
+  }
+
+  .format-option.selected .dot-inner { display: block; }
+
+  .format-option .title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .format-option .suggested {
+    font-size: 10.5px;
+    color: var(--accent);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    margin-left: auto;
+  }
+
+  .format-option .description {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  /* submit */
+  button.submit {
+    width: 100%;
+    padding: 12px 0;
+    border-radius: 7px;
+    border: none;
+    background: var(--accent);
+    color: #0F1613;
+    font-size: 14.5px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  button.submit.disabled-look {
+    background: var(--panel-raised);
+    color: var(--text-faint);
+  }
+
+  button.submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .submit-hint {
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--text-faint);
+    margin-top: 10px;
+    min-height: 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Submit a video</h1>
+  <p class="subtitle">We'll cut it into vertical clips and drop them in a Drive folder for review.</p>
+
+  <form id="submission-form" novalidate>
+
+    <!-- Email -->
+    <section>
+      <label class="field-label" for="email">Email address</label>
+      <input type="text" id="email" placeholder="you@example.com" autocomplete="email" />
+      <div class="error-text" id="email-error"></div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- Source -->
+    <section>
+      <label class="field-label">
+        Video source
+        <span class="field-hint">Choose one — switching clears the others.</span>
+      </label>
+
+      <div class="source-toggle" id="source-toggle">
+        <button type="button" data-source="url" class="active">URL</button>
+        <button type="button" data-source="file">File upload</button>
+        <button type="button" data-source="zip">ZIP upload</button>
+      </div>
+
+      <div class="source-panel active" data-panel="url">
+        <input type="url" id="source-url" placeholder="https://example.com/my-video.mp4" />
+      </div>
+
+      <div class="source-panel" data-panel="file">
+        <label class="file-picker" id="file-picker-file">
+          <span class="badge">BROWSE</span>
+          <span class="filename" id="file-name-file">Choose a video file (MP4, MOV, MKV)</span>
+          <input type="file" id="source-file" accept="video/mp4,video/quicktime,video/x-matroska" />
+        </label>
+      </div>
+
+      <div class="source-panel" data-panel="zip">
+        <label class="file-picker" id="file-picker-zip">
+          <span class="badge">BROWSE</span>
+          <span class="filename" id="file-name-zip">Choose a ZIP of videos (max 20)</span>
+          <input type="file" id="source-zip" accept=".zip" />
+        </label>
+      </div>
+
+      <div class="error-text" id="source-error"></div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- Clip duration -->
+    <section>
+      <label class="field-label">
+        Clip duration
+        <span class="field-hint">Each clip's length is chosen randomly within this range.</span>
+      </label>
+      <div class="range-row">
+        <div class="num-wrap has-suffix">
+          <input type="number" id="clip-min" min="1" value="15" />
+          <span class="num-suffix">sec</span>
+        </div>
+        <span class="to">to</span>
+        <div class="num-wrap has-suffix">
+          <input type="number" id="clip-max" min="1" value="60" />
+          <span class="num-suffix">sec</span>
+        </div>
+      </div>
+      <div class="error-text" id="clip-range-error"></div>
+    </section>
+
+    <!-- Max clips -->
+    <section>
+      <label class="field-label">
+        Max clips per video
+        <span class="field-hint">How many clips to attempt per video — fewer will be made if the source is too short.</span>
+      </label>
+      <div class="range-row">
+        <div class="num-wrap">
+          <input type="number" id="max-clips-min" min="1" value="8" />
+        </div>
+        <span class="to">to</span>
+        <div class="num-wrap">
+          <input type="number" id="max-clips-max" min="1" value="12" />
+        </div>
+      </div>
+      <div class="error-text" id="max-clips-error"></div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- Vertical format -->
+    <section>
+      <label class="field-label">
+        Vertical format
+        <span class="field-hint">How landscape footage fits a 9:16 frame.</span>
+      </label>
+      <div class="format-options" id="format-options">
+        <button type="button" class="format-option selected" data-format="pad_canvas">
+          <div class="row">
+            <span class="dot"><span class="dot-inner"></span></span>
+            <span class="title">Pad to canvas</span>
+            <span class="suggested">suggested</span>
+          </div>
+          <div class="description">Keeps the full frame, adds blurred bars top and bottom.</div>
+        </button>
+        <button type="button" class="format-option" data-format="center_crop">
+          <div class="row">
+            <span class="dot"><span class="dot-inner"></span></span>
+            <span class="title">Center crop</span>
+          </div>
+          <div class="description">Fills the frame, trims the left and right edges.</div>
+        </button>
+      </div>
+    </section>
+
+    <button type="submit" class="submit" id="submit-btn">Submit video</button>
+    <div class="submit-hint" id="submit-hint"></div>
+  </form>
+</div>
+
+<script>
+  // ---- state -----------------------------------------------------
+  const state = {
+    sourceType: "url",       // url | file | zip — exclusive
+    sourceUrl: "",
+    sourceFile: null,
+    sourceZip: null,
+    verticalFormat: "pad_canvas",
+    touched: false,
+  };
+
+  const els = {
+    email: document.getElementById("email"),
+    emailError: document.getElementById("email-error"),
+    sourceToggle: document.getElementById("source-toggle"),
+    sourceUrl: document.getElementById("source-url"),
+    sourceFile: document.getElementById("source-file"),
+    sourceZip: document.getElementById("source-zip"),
+    fileNameFile: document.getElementById("file-name-file"),
+    fileNameZip: document.getElementById("file-name-zip"),
+    filePickerFile: document.getElementById("file-picker-file"),
+    filePickerZip: document.getElementById("file-picker-zip"),
+    sourceError: document.getElementById("source-error"),
+    clipMin: document.getElementById("clip-min"),
+    clipMax: document.getElementById("clip-max"),
+    clipRangeError: document.getElementById("clip-range-error"),
+    maxClipsMin: document.getElementById("max-clips-min"),
+    maxClipsMax: document.getElementById("max-clips-max"),
+    maxClipsError: document.getElementById("max-clips-error"),
+    formatOptions: document.getElementById("format-options"),
+    form: document.getElementById("submission-form"),
+    submitBtn: document.getElementById("submit-btn"),
+    submitHint: document.getElementById("submit-hint"),
+  };
+
+  // ---- exclusive source-type toggle -------------------------------
+  els.sourceToggle.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-source]");
+    if (!btn) return;
+    const next = btn.dataset.source;
+
+    state.sourceType = next;
+    // clear the other two sources so only one can ever be set
+    if (next !== "url") { state.sourceUrl = ""; els.sourceUrl.value = ""; }
+    if (next !== "file") {
+      state.sourceFile = null;
+      els.sourceFile.value = "";
+      els.fileNameFile.textContent = "Choose a video file (MP4, MOV, MKV)";
+    }
+    if (next !== "zip") {
+      state.sourceZip = null;
+      els.sourceZip.value = "";
+      els.fileNameZip.textContent = "Choose a ZIP of videos (max 20)";
+    }
+
+    els.sourceToggle.querySelectorAll("button").forEach((b) =>
+      b.classList.toggle("active", b.dataset.source === next)
+    );
+    document.querySelectorAll(".source-panel").forEach((p) =>
+      p.classList.toggle("active", p.dataset.panel === next)
+    );
+
+    validate();
+  });
+
+  els.sourceUrl.addEventListener("input", (e) => {
+    state.sourceUrl = e.target.value;
+    validate();
+  });
+
+  els.sourceFile.addEventListener("change", (e) => {
+    const f = e.target.files[0] || null;
+    state.sourceFile = f;
+    els.fileNameFile.textContent = f ? f.name : "Choose a video file (MP4, MOV, MKV)";
+    validate();
+  });
+
+  els.sourceZip.addEventListener("change", (e) => {
+    const f = e.target.files[0] || null;
+    state.sourceZip = f;
+    els.fileNameZip.textContent = f ? f.name : "Choose a ZIP of videos (max 20)";
+    validate();
+  });
+
+  // ---- vertical format selector ------------------------------------
+  els.formatOptions.addEventListener("click", (e) => {
+    const btn = e.target.closest(".format-option");
+    if (!btn) return;
+    state.verticalFormat = btn.dataset.format;
+    els.formatOptions.querySelectorAll(".format-option").forEach((b) =>
+      b.classList.toggle("selected", b === btn)
+    );
+  });
+
+  // ---- validation (lightweight client-side only) --------------------
+  function emailValid() {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.email || els.email.value);
+  }
+
+  function sourceProvided() {
+    if (state.sourceType === "url") return state.sourceUrl.trim().length > 0;
+    if (state.sourceType === "file") return !!state.sourceFile;
+    if (state.sourceType === "zip") return !!state.sourceZip;
+    return false;
+  }
+
+  function clipRangeValid() {
+    const min = Number(els.clipMin.value);
+    const max = Number(els.clipMax.value);
+    return min > 0 && max >= min;
+  }
+
+  function maxClipsValid() {
+    const min = Number(els.maxClipsMin.value);
+    const max = Number(els.maxClipsMax.value);
+    return min > 0 && max >= min;
+  }
+
+  function formValid() {
+    return emailValid() && sourceProvided() && clipRangeValid() && maxClipsValid();
+  }
+
+  function validate() {
+    const valid = formValid();
+
+    if (state.touched) {
+      const eValid = emailValid();
+      els.email.classList.toggle("error", !eValid);
+      els.emailError.textContent = eValid ? "" : "Enter a valid email address.";
+
+      const sOk = sourceProvided();
+      els.sourceUrl.classList.toggle("error", state.sourceType === "url" && !sOk);
+      els.filePickerFile.classList.toggle("error", state.sourceType === "file" && !sOk);
+      els.filePickerZip.classList.toggle("error", state.sourceType === "zip" && !sOk);
+      els.sourceError.textContent = sOk ? "" : "A video source is required.";
+
+      const cOk = clipRangeValid();
+      els.clipMin.classList.toggle("error", !cOk);
+      els.clipMax.classList.toggle("error", !cOk);
+      els.clipRangeError.textContent = cOk
+        ? ""
+        : "Max duration must be greater than or equal to min duration.";
+
+      const mOk = maxClipsValid();
+      els.maxClipsMin.classList.toggle("error", !mOk);
+      els.maxClipsMax.classList.toggle("error", !mOk);
+      els.maxClipsError.textContent = mOk
+        ? ""
+        : "Max clips must be greater than or equal to min clips.";
+
+      els.submitHint.textContent = valid ? "" : "Fix the fields above to continue.";
+    }
+
+    els.submitBtn.classList.toggle("disabled-look", state.touched && !valid);
+    return valid;
+  }
+
+  [els.email].forEach((el) =>
+    el.addEventListener("input", () => {
+      state.email = els.email.value;
+      validate();
+    })
+  );
+
+  [els.clipMin, els.clipMax, els.maxClipsMin, els.maxClipsMax].forEach((el) =>
+    el.addEventListener("input", validate)
+  );
+
+  // ---- submit ---------------------------------------------------------
+  const API_BASE = "http://127.0.0.1:8000";
+
+  els.form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    state.touched = true;
+    state.email = els.email.value;
+    const valid = validate();
+    if (!valid) return;
+
+    if (state.sourceType !== "url") {
+      els.submitHint.textContent = "File and ZIP upload aren't supported yet — use a URL source for now.";
+      return;
+    }
+
+    const payload = {
+      submitter_email: state.email,
+      clip_duration_min_sec: Number(els.clipMin.value),
+      clip_duration_max_sec: Number(els.clipMax.value),
+      max_clips_per_video: Number(els.maxClipsMax.value),
+      vertical_format: state.verticalFormat,
+      source_type: state.sourceType,
+    };
+
+    els.submitBtn.disabled = true;
+    els.submitHint.textContent = "Submitting...";
+
+    try {
+      const res = await fetch(`${API_BASE}/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.detail ? JSON.stringify(err.detail) : `Request failed (${res.status})`);
+      }
+
+      const job = await res.json();
+      els.submitHint.textContent = `Job submitted — id: ${job.id}, status: ${job.status}`;
+      els.form.reset();
+      state.touched = false;
+    } catch (err) {
+      els.submitHint.textContent = `Something went wrong: ${err.message}`;
+    } finally {
+      els.submitBtn.disabled = false;
+    }
+  });
+</script>
+
+</body>
+</html>

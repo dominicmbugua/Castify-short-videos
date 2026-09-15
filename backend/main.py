@@ -6,7 +6,10 @@ app = FastAPI(title="Castify Shorts Pipeline")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # your React dev server
+    allow_origins=[
+        "http://localhost:3000",   # React dev server, once it exists
+        "http://127.0.0.1:5500",   # submission.html served via python -m http.server
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
