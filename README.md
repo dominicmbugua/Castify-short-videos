@@ -1,6 +1,6 @@
 # Castify Shorts Pipeline — Automated Landscape Video Shorts
 
-An automated pipeline for converting landscape videos into vertical shorts (9:16) with intelligent clip selection, formatting, and delivery to Google Drive.
+An aautomated pipeline for converting landscape videos into vertical shorts (9:16) with intelligent clip selection, formatting, and delivery to Google Drive.
 
 **Status**: Proof-of-Concept (v3 Design Review)  
 **Design Document**: `docs/DESIGN_v3.pdf`  
