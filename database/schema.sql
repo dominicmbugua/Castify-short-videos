@@ -21,10 +21,11 @@ CREATE TABLE jobs (
     drive_folder_id TEXT,
     paused_reason TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    INDEX idx_job_email (submitter_email),
-    INDEX idx_job_status (status)
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_job_email ON jobs (submitter_email);
+CREATE INDEX idx_job_status ON jobs (status);
 
 -- Video Task: one per video in the job
 CREATE TABLE video_tasks (
@@ -46,10 +47,11 @@ CREATE TABLE video_tasks (
     resolution TEXT,
     failure_reason TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    INDEX idx_task_job (job_id),
-    INDEX idx_task_status (status)
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_task_job ON video_tasks (job_id);
+CREATE INDEX idx_task_status ON video_tasks (status);
 
 -- Clip: individual extracted segment
 CREATE TABLE clips (
@@ -66,10 +68,11 @@ CREATE TABLE clips (
     drive_file_id TEXT,
     uploaded_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    INDEX idx_clip_task (video_task_id),
-    INDEX idx_clip_status (status)
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_clip_task ON clips (video_task_id);
+CREATE INDEX idx_clip_status ON clips (status);
 
 -- Email Delivery: tracked separately from Job
 CREATE TABLE email_deliveries (
@@ -83,10 +86,11 @@ CREATE TABLE email_deliveries (
     sent_at TIMESTAMP,
     confirmed_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    INDEX idx_delivery_job (job_id),
-    INDEX idx_delivery_status (status)
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_delivery_job ON email_deliveries (job_id);
+CREATE INDEX idx_delivery_status ON email_deliveries (status);
 
 -- Auto-update timestamp trigger
 CREATE OR REPLACE FUNCTION update_updated_at_column()
