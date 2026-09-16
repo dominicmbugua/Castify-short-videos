@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Job dashboard</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+<style>
+  :root {
+    --bg: #14181D;
+    --panel: #1B2027;
+    --panel-raised: #212832;
+    --line: #2C333D;
+    --text-primary: #E7EAEE;
+    --text-muted: #8B95A5;
+    --text-faint: #5B6472;
+    --accent: #4FB0A5;
+    --accent-dim: #2E4744;
+    --danger: #D97066;
+    --danger-dim: #3A2724;
+    --warning: #D9A066;
+    --warning-dim: #3A2E1E;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 48px 20px;
+  }
+
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 28px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px 0; }
+
+  .subtitle { font-size: 14px; color: var(--text-muted); margin: 0; }
+
+  .header-actions { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
+
+  a.new-job-btn {
+    text-decoration: none;
+    background: var(--accent);
+    color: #0F1613;
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 7px;
+    white-space: nowrap;
+  }
+
+  button.refresh-btn {
+    background: var(--panel-raised);
+    color: var(--text-muted);
+    border: 1px solid var(--line);
+    font-size: 13px;
+    padding: 9px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  button.refresh-btn:hover { color: var(--text-primary); }
+
+  .status-line {
+    font-size: 12.5px;
+    color: var(--text-faint);
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .dot.offline { background: var(--danger); }
+
+  .empty-state, .error-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+    font-size: 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  .error-state { color: var(--danger); }
+
+  .job-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .job-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+
+  .job-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+
+  .job-email {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .job-meta {
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-top: 2px;
+  }
+
+  .badge {
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+    text-transform: capitalize;
+    flex-shrink: 0;
+  }
+
+  .badge-queued { background: var(--panel-raised); color: var(--text-muted); }
+  .badge-active { background: var(--accent-dim); color: var(--accent); }
+  .badge-completed { background: var(--accent-dim); color: var(--accent); }
+  .badge-warning { background: var(--warning-dim); color: var(--warning); }
+  .badge-failed { background: var(--danger-dim); color: var(--danger); }
+
+  .video-list {
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .video-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    font-size: 12.5px;
+  }
+
+  .video-row .ref {
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11.5px;
+  }
+
+  .video-row .vstatus {
+    color: var(--text-faint);
+    flex-shrink: 0;
+    text-transform: capitalize;
+  }
+
+  .job-id {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 10.5px;
+    color: var(--text-faint);
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Submitted jobs</h1>
+      <p class="subtitle">Live view of everything sent through the submission form.</p>
+    </div>
+    <div class="header-actions">
+      <button class="refresh-btn" id="refresh-btn">Refresh now</button>
+      <a class="new-job-btn" href="submission.html">+ Submit a video</a>
+    </div>
+  </header>
+
+  <div class="status-line">
+    <span class="dot" id="status-dot"></span>
+    <span id="status-text">Loading...</span>
+  </div>
+
+  <div id="content"></div>
+</div>
+
+<script>
+  const API_BASE = "http://127.0.0.1:8000";
+  const POLL_INTERVAL_MS = 5000;
+
+  const els = {
+    content: document.getElementById("content"),
+    statusDot: document.getElementById("status-dot"),
+    statusText: document.getElementById("status-text"),
+    refreshBtn: document.getElementById("refresh-btn"),
+  };
+
+  const ACTIVE_STATUSES = new Set(["validating", "processing", "uploading"]);
+  const WARNING_STATUSES = new Set(["completed_partial", "paused_drive_quota", "completed_email_failed"]);
+
+  function badgeClass(status) {
+    if (status === "queued") return "badge-queued";
+    if (status === "completed") return "badge-completed";
+    if (status === "failed") return "badge-failed";
+    if (WARNING_STATUSES.has(status)) return "badge-warning";
+    if (ACTIVE_STATUSES.has(status)) return "badge-active";
+    return "badge-queued";
+  }
+
+  function timeAgo(isoString) {
+    const then = new Date(isoString).getTime();
+    const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+    if (diffSec < 60) return "just now";
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `${diffDay}d ago`;
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str ?? "";
+    return div.innerHTML;
+  }
+
+  function renderJobs(jobs) {
+    if (!jobs.length) {
+      els.content.innerHTML = `<div class="empty-state">No jobs submitted yet. Once someone submits a video, it'll show up here.</div>`;
+      return;
+    }
+
+    els.content.innerHTML = `<div class="job-list">${jobs.map(renderJobCard).join("")}</div>`;
+  }
+
+  function renderJobCard(job) {
+    const videoRows = (job.video_tasks || [])
+      .map(
+        (v) => `
+        <div class="video-row">
+          <span class="ref" title="${escapeHtml(v.source_ref)}">${escapeHtml(v.video_title || v.source_ref)}</span>
+          <span class="vstatus">${escapeHtml(v.status)}</span>
+        </div>`
+      )
+      .join("");
+
+    return `
+      <div class="job-card">
+        <div class="job-top">
+          <div>
+            <div class="job-email">${escapeHtml(job.submitter_email)}</div>
+            <div class="job-meta">${escapeHtml(job.source_type)} · ${escapeHtml(job.vertical_format)} · ${timeAgo(job.created_at)}</div>
+          </div>
+          <span class="badge ${badgeClass(job.status)}">${escapeHtml(job.status.replace(/_/g, " "))}</span>
+        </div>
+        ${videoRows ? `<div class="video-list">${videoRows}</div>` : ""}
+        <div class="job-id">${escapeHtml(job.id)}</div>
+      </div>
+    `;
+  }
+
+  async function loadJobs() {
+    try {
+      const res = await fetch(`${API_BASE}/jobs`);
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const jobs = await res.json();
+
+      renderJobs(jobs);
+      els.statusDot.classList.remove("offline");
+      els.statusText.textContent = `Updated ${new Date().toLocaleTimeString()} — refreshes every ${POLL_INTERVAL_MS / 1000}s`;
+    } catch (err) {
+      els.statusDot.classList.add("offline");
+      els.statusText.textContent = "Can't reach the backend";
+      if (!els.content.querySelector(".job-list")) {
+        els.content.innerHTML = `<div class="error-state">Couldn't load jobs: ${escapeHtml(err.message)}. Is the backend running?</div>`;
+      }
+    }
+  }
+
+  els.refreshBtn.addEventListener("click", loadJobs);
+
+  loadJobs();
+  setInterval(loadJobs, POLL_INTERVAL_MS);
+</script>
+
+</body>
+</html>

@@ -17,6 +17,7 @@
     --accent: #4FB0A5;
     --accent-dim: #2E4744;
     --danger: #D97066;
+    --danger-dim: #3A2724;
   }
 
   * { box-sizing: border-box; }
@@ -293,12 +294,120 @@
     margin-top: 10px;
     min-height: 0;
   }
+
+  /* ---- result modal ---- */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 12, 15, 0.66);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 100;
+  }
+
+  .modal-overlay.active { display: flex; }
+
+  .modal-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  }
+
+  .modal-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .modal-icon.success { background: var(--accent-dim); color: var(--accent); }
+  .modal-icon.error { background: var(--danger-dim); color: var(--danger); }
+
+  .modal-title {
+    font-size: 16.5px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .modal-message {
+    font-size: 13.5px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 20px;
+  }
+
+  .modal-detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 9px 12px;
+    font-size: 12.5px;
+    margin-bottom: 8px;
+    text-align: left;
+  }
+
+  .modal-detail-row .label { color: var(--text-faint); flex-shrink: 0; }
+
+  .modal-detail-row .value {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: rtl;
+    text-align: left;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  .modal-actions button {
+    flex: 1;
+    padding: 10px 0;
+    border-radius: 7px;
+    font-size: 13.5px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid var(--line);
+    background: var(--panel-raised);
+    color: var(--text-primary);
+  }
+
+  .modal-actions button.primary {
+    background: var(--accent);
+    color: #0F1613;
+    border-color: var(--accent);
+  }
 </style>
 </head>
 <body>
 
 <div class="wrap">
   <h1>Submit a video</h1>
+
+    <div style="text-align: right; margin-top: -34px; margin-bottom: 24px;">
+    <a href="dashboard.html" style="font-size: 13px; color: var(--accent); text-decoration: none;">View dashboard →</a>
+  </div>
   <p class="subtitle">We'll cut it into vertical clips and drop them in a Drive folder for review.</p>
 
   <form id="submission-form" novalidate>
@@ -420,6 +529,31 @@
   </form>
 </div>
 
+<!-- ---- result modal ---- -->
+<div class="modal-overlay" id="result-modal">
+  <div class="modal-card">
+    <div class="modal-icon" id="modal-icon"></div>
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-message" id="modal-message"></div>
+
+    <div id="modal-success-details">
+      <div class="modal-detail-row">
+        <span class="label">Job ID</span>
+        <span class="value" id="modal-job-id"></span>
+      </div>
+      <div class="modal-detail-row">
+        <span class="label">Status</span>
+        <span class="value" id="modal-job-status"></span>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" id="modal-copy-btn">Copy status URL</button>
+      <button type="button" class="primary" id="modal-close-btn">Done</button>
+    </div>
+  </div>
+</div>
+
 <script>
   // ---- state -----------------------------------------------------
   const state = {
@@ -453,6 +587,15 @@
     form: document.getElementById("submission-form"),
     submitBtn: document.getElementById("submit-btn"),
     submitHint: document.getElementById("submit-hint"),
+    modal: document.getElementById("result-modal"),
+    modalIcon: document.getElementById("modal-icon"),
+    modalTitle: document.getElementById("modal-title"),
+    modalMessage: document.getElementById("modal-message"),
+    modalSuccessDetails: document.getElementById("modal-success-details"),
+    modalJobId: document.getElementById("modal-job-id"),
+    modalJobStatus: document.getElementById("modal-job-status"),
+    modalCopyBtn: document.getElementById("modal-copy-btn"),
+    modalCloseBtn: document.getElementById("modal-close-btn"),
   };
 
   // ---- exclusive source-type toggle -------------------------------
@@ -588,6 +731,58 @@
     el.addEventListener("input", validate)
   );
 
+  // ---- result modal helpers ------------------------------------------
+  let currentStatusUrl = "";
+
+  function closeModal() {
+    els.modal.classList.remove("active");
+  }
+
+  els.modal.addEventListener("click", (e) => {
+    if (e.target === els.modal) closeModal();
+  });
+
+  els.modalCloseBtn.addEventListener("click", closeModal);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && els.modal.classList.contains("active")) closeModal();
+  });
+
+  els.modalCopyBtn.addEventListener("click", async () => {
+    if (!currentStatusUrl) return;
+    try {
+      await navigator.clipboard.writeText(currentStatusUrl);
+      els.modalCopyBtn.textContent = "Copied!";
+      setTimeout(() => { els.modalCopyBtn.textContent = "Copy status URL"; }, 1500);
+    } catch {
+      // clipboard API can be unavailable outside a secure context — fail silently
+    }
+  });
+
+  function showSuccessModal(job) {
+    currentStatusUrl = `${API_BASE}/jobs/${job.id}`;
+    els.modalIcon.className = "modal-icon success";
+    els.modalIcon.textContent = "\u2713"; // check mark
+    els.modalTitle.textContent = "Video submitted";
+    els.modalMessage.textContent = "Your job is queued for processing. Save the job ID below to check on it later.";
+    els.modalJobId.textContent = job.id;
+    els.modalJobStatus.textContent = job.status;
+    els.modalSuccessDetails.style.display = "block";
+    els.modalCopyBtn.style.display = "inline-block";
+    els.modal.classList.add("active");
+  }
+
+  function showErrorModal(message) {
+    currentStatusUrl = "";
+    els.modalIcon.className = "modal-icon error";
+    els.modalIcon.textContent = "!";
+    els.modalTitle.textContent = "Submission failed";
+    els.modalMessage.textContent = message;
+    els.modalSuccessDetails.style.display = "none";
+    els.modalCopyBtn.style.display = "none";
+    els.modal.classList.add("active");
+  }
+
   // ---- submit ---------------------------------------------------------
   const API_BASE = "http://127.0.0.1:8000";
 
@@ -598,41 +793,66 @@
     const valid = validate();
     if (!valid) return;
 
-    if (state.sourceType !== "url") {
-      els.submitHint.textContent = "File and ZIP upload aren't supported yet — use a URL source for now.";
-      return;
-    }
+    const formData = new FormData();
+    formData.append("submitter_email", state.email);
+    formData.append("clip_duration_min_sec", els.clipMin.value);
+    formData.append("clip_duration_max_sec", els.clipMax.value);
+    formData.append("max_clips_per_video", els.maxClipsMax.value);
+    formData.append("vertical_format", state.verticalFormat);
+    formData.append("source_type", state.sourceType);
 
-    const payload = {
-      submitter_email: state.email,
-      clip_duration_min_sec: Number(els.clipMin.value),
-      clip_duration_max_sec: Number(els.clipMax.value),
-      max_clips_per_video: Number(els.maxClipsMax.value),
-      vertical_format: state.verticalFormat,
-      source_type: state.sourceType,
-    };
+    if (state.sourceType === "url") {
+      formData.append("source_url", state.sourceUrl.trim());
+    } else if (state.sourceType === "file") {
+      formData.append("source_file", state.sourceFile);
+    } else if (state.sourceType === "zip") {
+      formData.append("source_file", state.sourceZip);
+    }
 
     els.submitBtn.disabled = true;
     els.submitHint.textContent = "Submitting...";
 
     try {
+      // NOTE: do not set a Content-Type header manually — the browser
+      // sets the multipart boundary itself when the body is a FormData.
       const res = await fetch(`${API_BASE}/jobs`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: formData,
       });
 
       if (!res.ok) {
         const err = await res.json().catch(() => null);
-        throw new Error(err?.detail ? JSON.stringify(err.detail) : `Request failed (${res.status})`);
+        const detail = err?.detail;
+        const message = typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((d) => d.msg || JSON.stringify(d)).join(" — ")
+            : `Request failed (${res.status})`;
+        throw new Error(message);
       }
 
       const job = await res.json();
-      els.submitHint.textContent = `Job submitted — id: ${job.id}, status: ${job.status}`;
+      els.submitHint.textContent = "";
+      showSuccessModal(job);
+
       els.form.reset();
       state.touched = false;
+      state.sourceType = "url";
+      state.sourceUrl = "";
+      state.sourceFile = null;
+      state.sourceZip = null;
+      els.fileNameFile.textContent = "Choose a video file (MP4, MOV, MKV)";
+      els.fileNameZip.textContent = "Choose a ZIP of videos (max 20)";
+      els.sourceToggle.querySelectorAll("button").forEach((b) =>
+        b.classList.toggle("active", b.dataset.source === "url")
+      );
+      document.querySelectorAll(".source-panel").forEach((p) =>
+        p.classList.toggle("active", p.dataset.panel === "url")
+      );
+      els.submitBtn.classList.remove("disabled-look");
     } catch (err) {
-      els.submitHint.textContent = `Something went wrong: ${err.message}`;
+      els.submitHint.textContent = "";
+      showErrorModal(err.message || "Something went wrong. Please try again.");
     } finally {
       els.submitBtn.disabled = false;
     }
