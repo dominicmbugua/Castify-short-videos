@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Job status</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+<style>
+  :root {
+    --bg: #14181D;
+    --panel: #1B2027;
+    --panel-raised: #212832;
+    --line: #2C333D;
+    --text-primary: #E7EAEE;
+    --text-muted: #8B95A5;
+    --text-faint: #5B6472;
+    --accent: #4FB0A5;
+    --accent-dim: #2E4744;
+    --warning: #D9A855;
+    --warning-dim: #453A22;
+    --danger: #D97066;
+    --danger-dim: #452E2B;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 48px 20px;
+  }
+
+  .wrap { width: 100%; max-width: 560px; }
+
+  .back-link {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-decoration: none;
+    margin-bottom: 20px;
+  }
+  .back-link:hover { color: var(--text-primary); }
+
+  .job-id-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .job-id {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 12.5px;
+    color: var(--text-faint);
+  }
+
+  button.copy-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  button.copy-btn:hover { color: var(--text-primary); border-color: var(--text-faint); }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 4px 0;
+  }
+
+  .subtitle {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin: 0 0 28px 0;
+  }
+
+  section { margin-bottom: 28px; }
+
+  .divider {
+    height: 1px;
+    background: var(--line);
+    margin-bottom: 28px;
+    border: none;
+  }
+
+  .section-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 14px;
+  }
+
+  /* status banner (exception states) */
+  .banner {
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 24px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .banner.failed { background: var(--danger-dim); border: 1px solid #5C3B37; }
+  .banner.paused { background: var(--warning-dim); border: 1px solid #5C4E2E; }
+  .banner.partial { background: var(--warning-dim); border: 1px solid #5C4E2E; }
+  .banner .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    margin-top: 5px; flex-shrink: 0;
+  }
+  .banner.failed .dot { background: var(--danger); }
+  .banner.paused .dot, .banner.partial .dot { background: var(--warning); }
+  .banner .title { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .banner.failed .title { color: var(--danger); }
+  .banner.paused .title, .banner.partial .title { color: var(--warning); }
+  .banner .detail { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+
+  /* step tracker */
+  .tracker { display: flex; align-items: flex-start; }
+  .step { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
+  .step:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 9px;
+    left: 50%;
+    width: 100%;
+    height: 2px;
+    background: var(--line);
+    z-index: 0;
+  }
+  .step.done:not(:last-child)::after { background: var(--accent); }
+
+  .step-dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--panel-raised);
+    border: 2px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1;
+    font-size: 11px;
+    color: var(--text-faint);
+  }
+  .step.done .step-dot { background: var(--accent); border-color: var(--accent); color: #0F1613; font-weight: 600; }
+  .step.current .step-dot { border-color: var(--accent); color: var(--accent); }
+  .step.dim .step-dot { opacity: 0.45; }
+
+  .step-label {
+    font-size: 11.5px;
+    color: var(--text-faint);
+    margin-top: 8px;
+    text-align: center;
+  }
+  .step.done .step-label, .step.current .step-label { color: var(--text-primary); }
+
+  /* job details */
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 20px;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .detail-item .k {
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-bottom: 3px;
+  }
+  .detail-item .v {
+    font-size: 13.5px;
+    color: var(--text-primary);
+  }
+
+  /* task rollup */
+  .task-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    font-size: 13.5px;
+  }
+  .task-row .name { color: var(--text-primary); }
+  .task-badge {
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+  .task-badge.failed { background: var(--danger-dim); color: var(--danger); }
+  .task-badge.pending { background: var(--panel); color: var(--text-faint); }
+
+  .empty-state {
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    padding: 18px 16px;
+    font-size: 13px;
+    color: var(--text-faint);
+    line-height: 1.5;
+    text-align: center;
+  }
+
+  .refresh-line {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-top: 4px;
+  }
+
+  .load-state, .error-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+  .error-state .title { color: var(--text-primary); font-weight: 600; margin-bottom: 6px; }
+
+  #app { display: none; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <a class="back-link" href="submission.html">&larr; Submit another video</a>
+
+  <div id="loading" class="load-state">Loading job status&hellip;</div>
+  <div id="error" class="error-state" style="display:none;">
+    <div class="title" id="error-title">Couldn't load this job</div>
+    <div id="error-detail"></div>
+  </div>
+
+  <div id="app">
+    <div class="job-id-row">
+      <span class="job-id" id="job-id-text"></span>
+      <button class="copy-btn" id="copy-btn" type="button">Copy</button>
+    </div>
+    <h1 id="headline">Job status</h1>
+    <p class="subtitle" id="subline"></p>
+
+    <div id="banner-slot"></div>
+
+    <section>
+      <div class="tracker" id="tracker"></div>
+    </section>
+
+    <hr class="divider" />
+
+    <section>
+      <div class="section-label">Submission details</div>
+      <div class="detail-grid" id="detail-grid"></div>
+    </section>
+
+    <hr class="divider" />
+
+    <section>
+      <div class="section-label">Videos in this job</div>
+      <div id="task-list"></div>
+    </section>
+
+    <div class="refresh-line" id="refresh-line"></div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = "http://127.0.0.1:8000";
+  const POLL_INTERVAL_MS = 3000;
+
+  // Section 11.1's main path for a Job. paused_drive_quota and the
+  // completed_* / failed variants are exceptions handled separately,
+  // not slotted into this line.
+  const MAIN_STEPS = [
+    { key: "queued", label: "Queued" },
+    { key: "validating", label: "Validating" },
+    { key: "processing", label: "Processing" },
+    { key: "uploading", label: "Uploading" },
+    { key: "completed", label: "Completed" },
+  ];
+
+  const TERMINAL_STATUSES = new Set([
+    "completed", "completed_partial", "failed", "completed_email_failed",
+  ]);
+
+  function getJobId() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("job")) return params.get("job");
+    // Fallback: support being served at a path like /status/<uuid>
+    // (what the API's status_url implies) as well as this static page
+    // with a query string.
+    const segments = window.location.pathname.split("/").filter(Boolean);
+    const last = segments[segments.length - 1];
+    if (last && last !== "status.html" && /^[0-9a-fA-F-]{8,}$/.test(last)) return last;
+    return null;
+  }
+
+  function formatDate(iso) {
+    try {
+      return new Date(iso).toLocaleString(undefined, {
+        dateStyle: "medium", timeStyle: "short",
+      });
+    } catch {
+      return iso;
+    }
+  }
+
+  function renderTracker(status) {
+    const el = document.getElementById("tracker");
+    el.innerHTML = "";
+
+    // Where the main line should visually freeze for each status.
+    const frozenAt = {
+      queued: 0, validating: 1, processing: 2, uploading: 3,
+      completed: 4, completed_partial: 4, completed_email_failed: 4,
+      paused_drive_quota: 3, failed: -1,
+    };
+    const currentIndex = MAIN_STEPS.findIndex((s) => s.key === status);
+    const effectiveIndex = currentIndex >= 0 ? currentIndex : (frozenAt[status] ?? -1);
+    const isFailed = status === "failed";
+
+    MAIN_STEPS.forEach((step, i) => {
+      const div = document.createElement("div");
+      let cls = "step";
+      if (isFailed) {
+        cls += " dim";
+      } else if (i < effectiveIndex || (i === effectiveIndex && i === MAIN_STEPS.length - 1)) {
+        cls += " done";
+      } else if (i === effectiveIndex) {
+        cls += " current";
+      } else {
+        cls += " dim";
+      }
+      div.className = cls;
+      const isDoneCheck = cls.includes("done");
+      div.innerHTML = `
+        <div class="step-dot">${isDoneCheck ? "&#10003;" : ""}</div>
+        <div class="step-label">${step.label}</div>
+      `;
+      el.appendChild(div);
+    });
+  }
+
+  function renderBanner(job) {
+    const slot = document.getElementById("banner-slot");
+    slot.innerHTML = "";
+
+    const banners = {
+      failed: {
+        cls: "failed",
+        title: "This submission failed",
+        detail: "Something went wrong while processing this job. No clips were delivered.",
+      },
+      paused_drive_quota: {
+        cls: "paused",
+        title: "Paused — waiting on Google Drive",
+        detail: job.paused_reason
+          ? job.paused_reason
+          : "Uploads are temporarily blocked by a Drive quota or auth issue. This resumes automatically — no action needed.",
+      },
+      completed_partial: {
+        cls: "partial",
+        title: "Completed with some failures",
+        detail: "Some videos in this submission finished successfully; others failed. See the breakdown below.",
+      },
+      completed_email_failed: {
+        cls: "partial",
+        title: "Completed, but the summary email failed to send",
+        detail: "Processing finished successfully — only the notification email didn't go out. Your clips are ready in Drive.",
+      },
+    };
+
+    const b = banners[job.status];
+    if (!b) return;
+
+    const div = document.createElement("div");
+    div.className = `banner ${b.cls}`;
+    div.innerHTML = `
+      <span class="dot"></span>
+      <div>
+        <div class="title">${b.title}</div>
+        <div class="detail">${b.detail}</div>
+      </div>
+    `;
+    slot.appendChild(div);
+  }
+
+  const HEADLINES = {
+    queued: "Waiting to start",
+    validating: "Checking the source video",
+    processing: "Cutting and formatting clips",
+    uploading: "Uploading to Drive",
+    completed: "All done",
+    completed_partial: "Done — partially",
+    failed: "Failed",
+    paused_drive_quota: "Paused",
+    completed_email_failed: "All done",
+  };
+
+  function renderDetails(job) {
+    const grid = document.getElementById("detail-grid");
+    const rows = [
+      ["Submitted by", job.submitter_email],
+      ["Source", job.source_type.toUpperCase()],
+      ["Vertical format", job.vertical_format === "pad_canvas" ? "Pad to canvas" : "Center crop"],
+      ["Clip duration", `${job.clip_duration_min_sec}s – ${job.clip_duration_max_sec}s`],
+      ["Max clips per video", job.max_clips_per_video],
+      ["Submitted", formatDate(job.created_at)],
+    ];
+    grid.innerHTML = rows.map(([k, v]) => `
+      <div class="detail-item">
+        <div class="k">${k}</div>
+        <div class="v">${v}</div>
+      </div>
+    `).join("");
+  }
+
+  // Video Task rollup (Section 11.1). The API doesn't expose per-video
+  // task state yet — this renders whatever it gets back and otherwise
+  // shows a plain pending state, so this section is ready to populate
+  // once that endpoint exists rather than needing a redesign later.
+  async function renderTasks(jobId) {
+    const el = document.getElementById("task-list");
+    try {
+      const res = await fetch(`${API_BASE}/jobs/${jobId}/tasks`);
+      if (!res.ok) throw new Error("not available");
+      const tasks = await res.json();
+      if (!Array.isArray(tasks) || tasks.length === 0) {
+        el.innerHTML = `<div class="empty-state">No per-video tasks yet.</div>`;
+        return;
+      }
+      el.innerHTML = tasks.map((t) => {
+        const badgeCls = t.status === "failed" ? "failed"
+          : t.status === "completed" ? "" : "pending";
+        return `
+          <div class="task-row">
+            <span class="name">${t.video_title || "Untitled video"}</span>
+            <span class="task-badge ${badgeCls}">${t.status}</span>
+          </div>
+        `;
+      }).join("");
+    } catch {
+      el.innerHTML = `<div class="empty-state">
+        Per-video progress isn't available from the API yet — this job is
+        tracked at the whole-submission level for now. Once video tasks
+        are tracked individually, they'll show up here.
+      </div>`;
+    }
+  }
+
+  let pollHandle = null;
+
+  async function loadJob(jobId) {
+    let res;
+    try {
+      res = await fetch(`${API_BASE}/jobs/${jobId}`);
+    } catch (err) {
+      showError("Couldn't reach the API", "Check that the backend is running and reachable.");
+      return;
+    }
+
+    if (res.status === 404) {
+      showError("Job not found", `No job exists with id ${jobId}.`);
+      if (pollHandle) clearInterval(pollHandle);
+      return;
+    }
+    if (!res.ok) {
+      showError("Couldn't load this job", `The API returned ${res.status}.`);
+      return;
+    }
+
+    const job = await res.json();
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("error").style.display = "none";
+    document.getElementById("app").style.display = "block";
+
+    document.getElementById("job-id-text").textContent = job.id;
+    document.getElementById("headline").textContent = HEADLINES[job.status] || job.status;
+    document.getElementById("subline").textContent =
+      "We'll cut it into vertical clips and drop them in a Drive folder for review.";
+
+    renderBanner(job);
+    renderTracker(job.status);
+    renderDetails(job);
+    renderTasks(job.id);
+
+    const now = new Date().toLocaleTimeString();
+    if (TERMINAL_STATUSES.has(job.status)) {
+      document.getElementById("refresh-line").textContent = `Finished — last checked ${now}.`;
+      if (pollHandle) { clearInterval(pollHandle); pollHandle = null; }
+    } else {
+      document.getElementById("refresh-line").textContent = `Auto-refreshing every few seconds — last checked ${now}.`;
+    }
+  }
+
+  function showError(title, detail) {
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("app").style.display = "none";
+    document.getElementById("error").style.display = "block";
+    document.getElementById("error-title").textContent = title;
+    document.getElementById("error-detail").textContent = detail;
+  }
+
+  function init() {
+    const jobId = getJobId();
+    if (!jobId) {
+      showError("No job ID in the URL", "Open this page as status.html?job=<job-id>.");
+      return;
+    }
+    loadJob(jobId);
+    pollHandle = setInterval(() => loadJob(jobId), POLL_INTERVAL_MS);
+  }
+
+  document.getElementById("copy-btn").addEventListener("click", () => {
+    const text = document.getElementById("job-id-text").textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById("copy-btn");
+      const original = btn.textContent;
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = original; }, 1200);
+    });
+  });
+
+  init();
+</script>
+
+</body>
+</html>
