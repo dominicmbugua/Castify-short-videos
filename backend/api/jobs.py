@@ -1,8 +1,8 @@
 import os
-import zipfile
 from pathlib import Path
 from typing import Optional, List
 from datetime import datetime
+import zipfile
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile
@@ -13,11 +13,15 @@ from email_validator import validate_email, EmailNotValidError
 
 from database import get_db
 from schemas.models import Job, VideoTask
+from object_storage import upload_to_staging, cleanup_scratch
+from workers.tasks import process_job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
-UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
+# Local scratch space used only transiently while a file/ZIP is validated,
+# before it's pushed to the object store and deleted from here.
+SCRATCH_DIR = Path(__file__).resolve().parent.parent / "scratch"
+SCRATCH_DIR.mkdir(exist_ok=True)
 
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024       # 2GB per file — adjust to taste
 MAX_ZIP_ENTRIES = 20                            # matches the UI's stated "max 20" hint
@@ -58,6 +62,22 @@ class JobListItem(BaseModel):
         from_attributes = True
 
 
+class JobDetail(BaseModel):
+    id: UUID
+    submitter_email: str
+    status: str
+    source_type: str
+    vertical_format: str
+    clip_duration_min_sec: int
+    clip_duration_max_sec: int
+    max_clips_per_video: int
+    paused_reason: Optional[str]
+    created_at: datetime
+    video_tasks: List[VideoTaskSummary]
+    class Config:
+        from_attributes = True
+
+
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
@@ -69,11 +89,9 @@ def sniff_file_type(header: bytes) -> str:
     Returns 'mp4_like', 'matroska', 'zip', or 'unknown'.
     """
     if len(header) >= 8 and header[4:8] == b"ftyp":
-        # ISO base media file format 'ftyp' box — covers both MP4 and MOV
-        return "mp4_like"
+        return "mp4_like"   # ISO base media 'ftyp' box — covers MP4 and MOV
     if header[:4] == b"\x1a\x45\xdf\xa3":
-        # EBML header — covers MKV and WebM
-        return "matroska"
+        return "matroska"   # EBML header — covers MKV and WebM
     if header[:4] in (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"):
         return "zip"
     return "unknown"
@@ -122,27 +140,17 @@ async def check_url_reachable(url: str) -> Optional[str]:
     Confirms a source URL actually resolves and responds. Deliberately does
     NOT require a video content-type — pages like a YouTube watch URL return
     text/html but are still valid sources a worker will fetch later.
-    Returns an error message if unreachable, or None if it's fine.
     """
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=URL_CHECK_TIMEOUT_SECONDS) as client:
             resp = await client.head(url)
             if resp.status_code >= 400:
-                # some servers don't implement HEAD properly — retry with a ranged GET
                 resp = await client.get(url, headers={"Range": "bytes=0-0"})
             if resp.status_code >= 400:
                 return f"URL returned HTTP {resp.status_code}"
     except httpx.RequestError as e:
         return f"Could not reach URL ({e.__class__.__name__})"
     return None
-
-
-def _cleanup_upload(dest_path: Path, job_upload_dir: Path) -> None:
-    dest_path.unlink(missing_ok=True)
-    try:
-        job_upload_dir.rmdir()
-    except OSError:
-        pass  # directory not empty or already gone — safe to ignore
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +196,7 @@ async def create_job(
         if source_file is None:
             raise HTTPException(400, f"source_file is required when source_type is '{source_type}'")
 
-    # ---- create the job row first, so we have an id to namespace the upload ----
+    # ---- create the job row ----
     job = Job(
         submitter_email=submitter_email,
         clip_duration_min_sec=clip_duration_min_sec,
@@ -200,34 +208,44 @@ async def create_job(
     db.add(job)
     db.flush()  # populates job.id without committing yet
 
-    # ---- resolve source_ref ----
+    # ---- Section 5.1: URL source needs no staging — the worker downloads
+    # it directly later, so the VideoTask just records the URL as-is. ----
     if source_type == "url":
-        source_ref = source_url
-        video_title = None
+        video_task = VideoTask(job_id=job.id, source_ref=source_url, video_title=None)
+        db.add(video_task)
+
+    # ---- Section 5.1: File/ZIP uploads are staged in the object store ----
     else:
-        job_upload_dir = UPLOAD_DIR / str(job.id)
-        job_upload_dir.mkdir(parents=True, exist_ok=True)
+        # The task must exist (and have an id) before staging, since the
+        # object-store key is staging/{job_id}/{task_id}/source.{ext}.
+        video_task = VideoTask(job_id=job.id, source_ref="pending")
+        db.add(video_task)
+        db.flush()  # populates video_task.id
+
+        scratch_dir = SCRATCH_DIR / str(job.id) / str(video_task.id)
+        scratch_dir.mkdir(parents=True, exist_ok=True)
 
         safe_name = os.path.basename(source_file.filename or "upload")
-        dest_path = job_upload_dir / safe_name
+        local_path = scratch_dir / safe_name
 
         size = 0
         header_checked = False
-        with open(dest_path, "wb") as out:
+        sniffed_type = None
+        with open(local_path, "wb") as out:
             while chunk := await source_file.read(1024 * 1024):
                 if not header_checked:
-                    sniffed = sniff_file_type(chunk[:12])
-                    if source_type == "file" and sniffed not in ("mp4_like", "matroska"):
+                    sniffed_type = sniff_file_type(chunk[:12])
+                    if source_type == "file" and sniffed_type not in ("mp4_like", "matroska"):
                         out.close()
-                        _cleanup_upload(dest_path, job_upload_dir)
+                        cleanup_scratch(scratch_dir)
                         db.rollback()
                         raise HTTPException(
                             400,
                             "File content doesn't look like a valid MP4/MOV/MKV video (magic-byte check failed)",
                         )
-                    if source_type == "zip" and sniffed != "zip":
+                    if source_type == "zip" and sniffed_type != "zip":
                         out.close()
-                        _cleanup_upload(dest_path, job_upload_dir)
+                        cleanup_scratch(scratch_dir)
                         db.rollback()
                         raise HTTPException(
                             400,
@@ -238,30 +256,41 @@ async def create_job(
                 size += len(chunk)
                 if size > MAX_UPLOAD_BYTES:
                     out.close()
-                    _cleanup_upload(dest_path, job_upload_dir)
+                    cleanup_scratch(scratch_dir)
                     db.rollback()
                     raise HTTPException(413, "Uploaded file is too large")
                 out.write(chunk)
 
         if source_type == "zip":
-            zip_error = validate_zip_safety(dest_path)
+            zip_error = validate_zip_safety(local_path)
             if zip_error:
-                _cleanup_upload(dest_path, job_upload_dir)
+                cleanup_scratch(scratch_dir)
                 db.rollback()
                 raise HTTPException(400, zip_error)
 
-        source_ref = str(dest_path)
-        video_title = safe_name
+        # ---- push the validated local file to the object store's staging
+        # area; boto3 multipart-uploads larger files automatically ----
+        ext = Path(safe_name).suffix.lstrip(".") or (
+            "mp4" if sniffed_type == "mp4_like" else "mkv" if sniffed_type == "matroska" else "zip"
+        )
+        try:
+            staged_key = upload_to_staging(local_path, job.id, video_task.id, ext)
+        except Exception as e:
+            cleanup_scratch(scratch_dir)
+            db.rollback()
+            raise HTTPException(502, f"Failed to stage upload in object storage: {e}")
 
-    video_task = VideoTask(
-        job_id=job.id,
-        source_ref=source_ref,
-        video_title=video_title,
-    )
-    db.add(video_task)
+        cleanup_scratch(scratch_dir)  # now durably in the object store
+
+        video_task.source_ref = staged_key
+        video_task.video_title = safe_name
 
     db.commit()
     db.refresh(job)
+
+    # ---- Section: task enqueueing — hand the job off to a Celery worker ----
+    process_job.delay(str(job.id))
+
     return job
 
 
@@ -277,9 +306,23 @@ def list_jobs(db: Session = Depends(get_db), limit: int = 50):
     return jobs
 
 
-@router.get("/{job_id}", response_model=JobResponse)
+@router.get("/{job_id}", response_model=JobDetail)
 def get_job(job_id: str, db: Session = Depends(get_db)):
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = (
+        db.query(Job)
+        .options(joinedload(Job.video_tasks))
+        .filter(Job.id == job_id)
+        .first()
+    )
     if not job:
         raise HTTPException(404, "Job not found")
     return job
+
+
+@router.get("/{job_id}/tasks", response_model=List[VideoTaskSummary])
+def get_job_tasks(job_id: str, db: Session = Depends(get_db)):
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(404, "Job not found")
+    tasks = db.query(VideoTask).filter(VideoTask.job_id == job_id).all()
+    return tasks

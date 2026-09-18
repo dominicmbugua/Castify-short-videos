@@ -5,13 +5,38 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: castify
-      POSTGRES_PASSWORD: changeme_local_dev
-      POSTGRES_DB: castify_shorts
+      POSTGRES_PASSWORD: castify_dev_password
+      POSTGRES_DB: castify_shorts_dev
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
 
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: castify-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin_dev
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    command: server /data --console-address ":9001"
+
+  redis:
+    image: redis:7
+    container_name: castify-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
 volumes:
   pgdata:
+  miniodata:
+  redisdata:

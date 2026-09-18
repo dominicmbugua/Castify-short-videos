@@ -1,15 +1,9 @@
 # FastAPI & Web Framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
-email-validator==2.3.0
-=======
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 pydantic>=2.9.0
 pydantic-settings>=2.5.0
->>>>>>> 8784b45079b6b79e9b0c18664fa408dd96562ff0
+email-validator==2.3.0
 
 # Database
 sqlalchemy>=2.0.35
@@ -53,8 +47,4 @@ pytest-cov>=4.1.0
 # Code Quality
 black>=24.0.0
 flake8==6.1.0
-<<<<<<< HEAD
-mypy==1.7.1
-=======
 mypy>=1.11.0
-
