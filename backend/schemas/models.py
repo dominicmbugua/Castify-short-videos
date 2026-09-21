@@ -42,3 +42,22 @@ class VideoTask(Base):
     updated_at = Column(TIMESTAMP, server_default=func.now())
 
     job = relationship("Job", back_populates="video_tasks")
+    clips = relationship("Clip", back_populates="video_task", cascade="all, delete-orphan")
+
+
+class Clip(Base):
+    __tablename__ = "clips"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
+    video_task_id = Column(UUID(as_uuid=True), ForeignKey("video_tasks.id", ondelete="CASCADE"), nullable=False)
+    clip_index = Column(Integer, nullable=False)
+    clip_key = Column(Text, nullable=False, unique=True)
+    start_time_sec = Column(Numeric(10, 2), nullable=False)
+    duration_sec = Column(Numeric(10, 2), nullable=False)
+    end_time_sec = Column(Numeric(10, 2), nullable=False)
+    status = Column(Text, nullable=False, server_default="planned")
+    content_hash = Column(Text, nullable=True)
+    drive_file_id = Column(Text, nullable=True)
+    uploaded_at = Column(TIMESTAMP, nullable=True)
+
+    video_task = relationship("VideoTask", back_populates="clips")
