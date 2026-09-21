@@ -2,6 +2,7 @@ import json
 import shutil
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import Optional
 
 from workers.celery_app import celery_app
 from database import SessionLocal
@@ -10,9 +11,38 @@ from workers.video_inspection import download_source_to_scratch, inspect_video, 
 from workers.clip_extraction import extract_and_format_clip, compute_content_hash
 from workers.drive_upload import upload_file
 from workers.summary import submission_folder_name, build_submission_summary
+from titles import filename_from_url
 
 WORKER_SCRATCH_DIR = Path(__file__).resolve().parent.parent / "worker_scratch"
 WORKER_SCRATCH_DIR.mkdir(exist_ok=True)
+
+
+def fetch_source_title(url: str) -> Optional[str]:
+    """
+    Best-effort lookup of a URL video's real title (e.g. a YouTube title)
+    using yt-dlp's metadata extraction, without downloading anything.
+    Never raises: on any failure it returns None and the job carries on
+    with whatever placeholder title the API already stored.
+    """
+    try:
+        from yt_dlp import YoutubeDL
+    except ImportError:
+        return None
+
+    try:
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "noplaylist": True,
+        }
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+        title = (info or {}).get("title")
+        return title.strip()[:200] if title else None
+    except Exception as e:
+        print(f"[worker]   title lookup failed for {url}: {e}")
+        return None
 
 
 def _process_video_task(db, job, vt, task_scratch):
@@ -21,6 +51,18 @@ def _process_video_task(db, job, vt, task_scratch):
 
     vt.status = "downloading"
     db.commit()
+
+    # Name URL videos before downloading so the status page shows it right
+    # away and the Drive folder further down uses it. A direct file link
+    # (.../some-video.mp4) is named from its filename, minus any leading
+    # upload timestamp. Anything else (e.g. a YouTube page) asks yt-dlp
+    # for the real title.
+    if job.source_type == "url":
+        title = filename_from_url(vt.source_ref) or fetch_source_title(vt.source_ref)
+        if title:
+            vt.video_title = title
+            db.commit()
+
     local_path = download_source_to_scratch(vt, job.source_type, task_scratch)
 
     vt.status = "inspecting"

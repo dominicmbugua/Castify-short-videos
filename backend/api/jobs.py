@@ -15,6 +15,7 @@ from database import get_db
 from schemas.models import Job, VideoTask
 from object_storage import upload_to_staging, cleanup_scratch
 from workers.tasks import process_job
+from titles import title_from_url
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -161,8 +162,7 @@ async def check_url_reachable(url: str) -> Optional[str]:
 async def create_job(
     db: Session = Depends(get_db),
     submitter_email: str = Form(...),
-    clip_duration_min_sec: int = Form(...),
-    clip_duration_max_sec: int = Form(...),
+    clip_duration_sec: int = Form(...),
     max_clips_per_video: int = Form(...),
     vertical_format: str = Form(...),
     source_type: str = Form(...),
@@ -181,8 +181,11 @@ async def create_job(
     if source_type not in ("url", "file", "zip"):
         raise HTTPException(400, "source_type must be url, file, or zip")
 
-    if clip_duration_max_sec < clip_duration_min_sec:
-        raise HTTPException(400, "clip_duration_max_sec must be >= clip_duration_min_sec")
+    if clip_duration_sec < 1:
+        raise HTTPException(400, "clip_duration_sec must be at least 1")
+
+    if max_clips_per_video < 1:
+        raise HTTPException(400, "max_clips_per_video must be at least 1")
 
     # ---- source-specific pre-checks (before touching the database) ----
     if source_type == "url":
@@ -197,10 +200,12 @@ async def create_job(
             raise HTTPException(400, f"source_file is required when source_type is '{source_type}'")
 
     # ---- create the job row ----
+    # The DB still stores min/max columns; a fixed clip length is simply
+    # min == max, so no schema change or worker change is needed.
     job = Job(
         submitter_email=submitter_email,
-        clip_duration_min_sec=clip_duration_min_sec,
-        clip_duration_max_sec=clip_duration_max_sec,
+        clip_duration_min_sec=clip_duration_sec,
+        clip_duration_max_sec=clip_duration_sec,
         max_clips_per_video=max_clips_per_video,
         vertical_format=vertical_format,
         source_type=source_type,
@@ -211,7 +216,11 @@ async def create_job(
     # ---- Section 5.1: URL source needs no staging — the worker downloads
     # it directly later, so the VideoTask just records the URL as-is. ----
     if source_type == "url":
-        video_task = VideoTask(job_id=job.id, source_ref=source_url, video_title=None)
+        video_task = VideoTask(
+            job_id=job.id,
+            source_ref=source_url,
+            video_title=title_from_url(source_url),
+        )
         db.add(video_task)
 
     # ---- Section 5.1: File/ZIP uploads are staged in the object store ----

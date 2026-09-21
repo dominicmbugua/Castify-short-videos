@@ -184,6 +184,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
     padding: 10px 14px;
     background: var(--panel-raised);
     border: 1px solid var(--line);
@@ -191,7 +192,13 @@
     margin-bottom: 8px;
     font-size: 13.5px;
   }
-  .task-row .name { color: var(--text-primary); }
+  .task-row .name {
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
   .task-badge {
     font-size: 11px;
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
@@ -199,6 +206,7 @@
     border-radius: 4px;
     background: var(--accent-dim);
     color: var(--accent);
+    flex-shrink: 0;
   }
   .task-badge.failed { background: var(--danger-dim); color: var(--danger); }
   .task-badge.pending { background: var(--panel); color: var(--text-faint); }
@@ -305,6 +313,14 @@
     return null;
   }
 
+  // Titles, filenames and emails come from user input, so escape them
+  // before they go through innerHTML.
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
   function formatDate(iso) {
     try {
       return new Date(iso).toLocaleString(undefined, {
@@ -313,6 +329,43 @@
     } catch {
       return iso;
     }
+  }
+
+  // Drops a leading upload timestamp (14+ digits) from a filename, e.g.
+  // 20201204174233072cup-of-coffee.mp4 -> cup-of-coffee.mp4. Mirrors
+  // clean_filename_title in the backend's titles.py.
+  function cleanFilenameTitle(name) {
+    const dot = name.lastIndexOf(".");
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const ext = dot > 0 ? name.slice(dot) : "";
+    const cleaned = stem.replace(/^\d{14,}[\s._-]*/, "");
+    return cleaned ? cleaned + ext : name;
+  }
+
+  // Pick the best name to show for a video task:
+  //   1. the stored title (uploads always have one; URL jobs get one from the API/worker)
+  //   2. a filename found in the source URL
+  //   3. the URL's hostname
+  //   4. "Untitled video" as a last resort
+  function taskDisplayName(task) {
+    if (task.video_title && task.video_title.trim()) return task.video_title.trim();
+    try {
+      const url = new URL(task.source_ref);
+      const last = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "");
+      if (last && /\.[a-z0-9]{2,4}$/i.test(last)) return cleanFilenameTitle(last);
+      if (url.hostname) return url.hostname;
+    } catch {
+      // source_ref isn't a URL (e.g. a staging key) — fall through
+    }
+    return "Untitled video";
+  }
+
+  function formatClipDuration(job) {
+    const min = job.clip_duration_min_sec;
+    const max = job.clip_duration_max_sec;
+    // New jobs store a single fixed length as min == max. Older jobs
+    // created with a range still show as a range.
+    return min === max ? `${min}s` : `${min}s – ${max}s`;
   }
 
   function renderTracker(status) {
@@ -365,7 +418,7 @@
         cls: "paused",
         title: "Paused — waiting on Google Drive",
         detail: job.paused_reason
-          ? job.paused_reason
+          ? escapeHtml(job.paused_reason)
           : "Uploads are temporarily blocked by a Drive quota or auth issue. This resumes automatically — no action needed.",
       },
       completed_partial: {
@@ -410,12 +463,12 @@
   function renderDetails(job) {
     const grid = document.getElementById("detail-grid");
     const rows = [
-      ["Submitted by", job.submitter_email],
-      ["Source", job.source_type.toUpperCase()],
+      ["Submitted by", escapeHtml(job.submitter_email)],
+      ["Source", escapeHtml(job.source_type.toUpperCase())],
       ["Vertical format", job.vertical_format === "pad_canvas" ? "Pad to canvas" : "Center crop"],
-      ["Clip duration", `${job.clip_duration_min_sec}s – ${job.clip_duration_max_sec}s`],
-      ["Max clips per video", job.max_clips_per_video],
-      ["Submitted", formatDate(job.created_at)],
+      ["Clip duration", formatClipDuration(job)],
+      ["Max clips per video", escapeHtml(job.max_clips_per_video)],
+      ["Submitted", escapeHtml(formatDate(job.created_at))],
     ];
     grid.innerHTML = rows.map(([k, v]) => `
       <div class="detail-item">
@@ -442,10 +495,11 @@
       el.innerHTML = tasks.map((t) => {
         const badgeCls = t.status === "failed" ? "failed"
           : t.status === "completed" ? "" : "pending";
+        const name = escapeHtml(taskDisplayName(t));
         return `
           <div class="task-row">
-            <span class="name">${t.video_title || "Untitled video"}</span>
-            <span class="task-badge ${badgeCls}">${t.status}</span>
+            <span class="name" title="${name}">${name}</span>
+            <span class="task-badge ${badgeCls}">${escapeHtml(t.status)}</span>
           </div>
         `;
       }).join("");
